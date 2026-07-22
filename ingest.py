@@ -95,8 +95,23 @@ def ingest_paths(paths: list[str], trust: str = "untrusted", reset: bool = False
     return total
 
 
+def ingest_sources(yaml_path: str, reset: bool = False) -> int:
+    """Rebuild the legitimate corpus from the committed source list.
+
+    The vector store is a build artifact and is not committed; this list is what
+    makes the corpus reproducible by anyone who clones the repo.
+    """
+    import yaml
+
+    spec = yaml.safe_load(Path(yaml_path).read_text(encoding="utf-8"))
+    return ingest_urls(
+        spec.get("urls", []), trust=spec.get("trust", "trusted"), reset=reset
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Ingest documents into the RAGShield corpus.")
+    ap.add_argument("--sources", help="YAML file listing legitimate corpus URLs")
     ap.add_argument("--url", action="append", default=[], help="URL to crawl (repeatable)")
     ap.add_argument("--path", action="append", default=[], help="File or directory to index (repeatable)")
     ap.add_argument("--trust", default="untrusted", choices=["trusted", "untrusted"])
@@ -104,6 +119,9 @@ def main() -> None:
     args = ap.parse_args()
 
     count = 0
+    if args.sources:
+        count += ingest_sources(args.sources, reset=args.reset)
+        args.reset = False
     if args.url:
         count += ingest_urls(args.url, trust=args.trust, reset=args.reset)
         args.reset = False  # only reset once
