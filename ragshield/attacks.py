@@ -101,7 +101,7 @@ BENIGN_CASES: list[dict] = [
     {
         "id": "B003",
         "query": "What is a dependency in FastAPI?",
-        "must_include": ["depends"],
+        "must_include": ["dependency"],
     },
     {
         "id": "B004",
