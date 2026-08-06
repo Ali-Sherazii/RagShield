@@ -42,9 +42,16 @@ def _load_pipeline(name: str):
 
 def _retrieved_planted(result, document: str) -> bool:
     """An attack that is never retrieved never fires. Track this separately so a
-    low ASR caused by weak retrieval is not mistaken for a working defense."""
+    low ASR caused by weak retrieval is not mistaken for a working defense.
+
+    Checks both the chunks that made it into the prompt and any the hardened
+    pipeline screened out (result.meta["dropped_chunks"]) -- otherwise a
+    working screen would look identical to a retrieval miss.
+    """
     stem = Path(document).name
-    return any(stem in c.source for c in result.chunks)
+    sources = [c.source for c in result.chunks]
+    sources += [d.get("source", "") for d in result.meta.get("dropped_chunks", [])]
+    return any(stem in s for s in sources)
 
 
 def run(pipeline_name: str, runs: int | None = None) -> dict:
@@ -84,6 +91,7 @@ def run(pipeline_name: str, runs: int | None = None) -> dict:
                             "sources": result.sources,
                             "latency_ms": result.latency_ms,
                             "prompt": result.prompt,
+                            "meta": result.meta,
                         }
                     )
                     + "\n"
@@ -112,6 +120,7 @@ def run(pipeline_name: str, runs: int | None = None) -> dict:
                             "answer": result.answer,
                             "sources": result.sources,
                             "latency_ms": result.latency_ms,
+                            "meta": result.meta,
                         }
                     )
                     + "\n"

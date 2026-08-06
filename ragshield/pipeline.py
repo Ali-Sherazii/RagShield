@@ -107,6 +107,10 @@ def answer(query: str, top_k: int | None = None) -> Result:
 
 def main() -> None:
     import argparse
+    import sys
+
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
 
     ap = argparse.ArgumentParser(description="Query the naive RAG pipeline.")
     ap.add_argument("query", help="question to ask")
