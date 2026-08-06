@@ -71,15 +71,22 @@ The content author **cannot**:
 
 Each defense maps to a boundary the attacker must cross:
 
-| Objective | Defense layer | Attack class addressed |
-|---|---|---|
-| Keep untrusted text from reading as instructions | Delimiting / spotlighting retrieved content; hardened system prompt | 1, 4 |
-| Catch hostile content before it reaches the model | Injection detection on retrieved chunks (heuristic → classifier) | 1, 3, 4 |
-| Limit damage from content that gets through | Output filtering: strip outbound URLs, detect system-prompt fragments | 3 |
-| Reduce exposure to untrusted sources | Source provenance / allowlisting, trust-weighted ranking | 1, 2, 3 |
-| Preserve usefulness | Utility check on benign queries — a defense that blocks legitimate answers has failed | all |
+| Objective | Defense layer | Attack class addressed | Status |
+|---|---|---|---|
+| Keep untrusted text from reading as instructions | Delimiting / spotlighting retrieved content; hardened system prompt | 1, 4 | Implemented — `hardened.build_prompt()` |
+| Catch hostile content before it reaches the model | Injection detection on retrieved chunks (heuristic → classifier) | 1, 3, 4 | Implemented (heuristic only) — `hardened._screen()` |
+| Limit damage from content that gets through | Output filtering: strip outbound URLs, detect system-prompt fragments | 3 | Implemented — `hardened._filter_output()` |
+| Reduce exposure to untrusted sources | Source provenance / allowlisting, trust-weighted ranking | 1, 2, 3 | Implemented (exposure cap) — `hardened._screen()` |
+| Preserve usefulness | Utility check on benign queries — a defense that blocks legitimate answers has failed | all | Measured — see README Results |
 
 That last row is the one most projects skip. A pipeline that refuses everything has an attack success rate of zero and is worthless. **The result that matters is ASR down, utility held** — the same false-positive tradeoff as tuning a firewall's detection threshold.
+
+**Measured result (2026-08-07, `llama3.1:8b`):** overall ASR 66.7% → 33.3%,
+benign utility 80% → 100%. Class 1 (instruction injection) dropped 100% → 0%.
+Class 2 (corpus poisoning) is unchanged at 100% — expected, since it has no
+instruction pattern or output anomaly for any layer above to catch; closing
+it needs semantic fact-checking against the trusted corpus, which is not yet
+built. Full numbers and caveats in [README.md](README.md#results).
 
 ## 9. What gets measured
 
