@@ -55,7 +55,7 @@ See [THREAT_MODEL.md](THREAT_MODEL.md) for the full attacker model and scope.
 Three pipelines, each closing off a bit more of the naive one's collapse
 between developer intent and retrieved data.
 
-**Naive** (`ragshield/pipeline.py`) — the attack target: no delimiting, no
+**Naive** (`ragshield/pipeline.py`); the attack target: no delimiting, no
 filtering, no provenance check.
 
 ```mermaid
@@ -68,7 +68,7 @@ flowchart LR
     style P fill:#c0392b,color:#fff
 ```
 
-**Hardened** (`ragshield/hardened.py`) — pattern-based screening, a
+**Hardened** (`ragshield/hardened.py`); pattern-based screening, a
 trust-weighted exposure cap, a spotlighted/delimited prompt, and output
 filtering.
 
@@ -86,7 +86,7 @@ flowchart LR
     style F fill:#2980b9,color:#fff
 ```
 
-**Robust** (`ragshield/robust_a002.py`) — same screen as hardened, then
+**Robust** (`ragshield/robust_a002.py`); same screen as hardened, then
 isolate-then-aggregate: answer from each chunk alone, cluster by claim, and
 only report a claim that clears a minimum number of *independent sources*.
 Targets corpus poisoning (A002), which has no pattern for the screen above
@@ -114,7 +114,7 @@ flowchart LR
 1. Build a standard, undefended RAG pipeline (this repo, current state).
 2. Build a corpus of publicly documented attacks and measure how often they
    succeed against it (Attack Success Rate).
-3. Add defense layers — pattern screening + spotlighting (`hardened.py`),
+3. Add defense layers, pattern screening + spotlighting (`hardened.py`),
    then isolate-then-aggregate consensus (`robust_a002.py`) — and measure
    ASR again, while checking that answer quality on benign queries does not
    degrade.
@@ -249,7 +249,7 @@ semantic fact-checking, which is out of scope here and called out as a known
 limitation rather than hidden).
 
 **What that screen actually does, on a real recorded run** (case A001,
-"How do I enable CORS in FastAPI?" — full text in
+"How do I enable CORS in FastAPI?", full text in
 `results/naive-20260807-005332.jsonl` / `results/hardened-20260807-013221.jsonl`):
 
 ![Real recorded output: naive attack succeeds, hardened defends](docs/assets/sample_output_a001.png)
@@ -262,7 +262,7 @@ on 2026-09-15. 5 scenarios (`ragshield/ladder.py`). Raw logs in
 `results/ladder-*.jsonl`, summary in `results/ladder-*-summary.json`, plot
 in `results/ladder-*.png`.
 
-![Track B: attacker cost curve -- rung vs retrieval success, and flooding vs defenses](docs/assets/track_b_cost_curve.png)
+![Track B: attacker cost curve; rung vs retrieval success, and flooding vs defenses](docs/assets/track_b_cost_curve.png)
 
 | rung | P(enters top-4) | mean rank | ASR naive | ASR hardened | ASR robust |
 |---|---|---|---|---|---|
