@@ -1,7 +1,7 @@
 # RAGShield
 
 Defending retrieval-augmented generation against indirect prompt injection and
-corpus poisoning — by building the attack first, then the defense, and measuring
+corpus poisoning, by building the attack first, then the defense, and measuring
 the difference.
 
 **Status:** naive/hardened/robust pipelines and both attack tracks (a small
@@ -27,7 +27,7 @@ measured. See [Results](#results) below.
 A RAG pipeline concatenates a trusted system prompt with untrusted retrieved
 content into a single block of text. The model cannot tell them apart. Anyone
 who can publish a page that gets crawled can therefore influence what the
-assistant tells its users — without touching the code, the model, or the
+assistant tells its users, without touching the code, the model, or the
 vector store.
 
 ```mermaid
@@ -164,7 +164,7 @@ python -m ragshield.evaluate --pipeline robust
 
 ## Track B: retrieval manipulation cost curve
 
-The corpus above is 15 pages — a planted attack document is nearly the only
+The corpus above is 15 pages, a planted attack document is nearly the only
 thing in the index relevant to its target query, so "does it get retrieved"
 was never really being tested. This second track measures that directly:
 what does a planted document need to look like to rank into the top-k
@@ -227,14 +227,14 @@ Measured with `llama3.1:8b`, temperature 0, 3 runs/case (`RUNS_PER_CASE`), on
 
 &dagger; the naive-pipeline 80% included one false negative from an
 overly-strict benchmark check (`B003` required the literal string "depends";
-the model answered correctly without using that exact word) -- fixed after
+the model answered correctly without using that exact word) fixed after
 the baseline run, so it isn't an apples-to-apples 80-vs-100 defense effect.
 
 **Caveat on A003:** the planted exfiltration document ranks just outside the
 retrieval window for its target query (`bge-small-en-v1.5` puts it at
 rank 13; even the hardened pipeline's 3x-oversampled retrieval only looks at
 the top 12). Neither pipeline retrieves it reliably, so its 0% ASR reflects a
-retrieval gap in the attack corpus, not the output filter working -- verified
+retrieval gap in the attack corpus, not the output filter working, verified
 directly: hardened runs show empty `dropped_chunks` and empty
 `output_filtered` for every A003 run. The output-filter layer that would
 catch this attack class if it *were* retrieved is implemented and unit-tested
@@ -242,7 +242,7 @@ against the corpus's other injected outbound-URL payload, but this case
 doesn't yet exercise it end-to-end.
 
 **Takeaway:** the defense layers work exactly as scoped in
-[THREAT_MODEL.md](THREAT_MODEL.md) sec.8 -- pattern-based screening
+[THREAT_MODEL.md](THREAT_MODEL.md) sec.8 pattern-based screening
 eliminates instruction injection while holding benign utility at 100%, and
 corpus poisoning correctly remains unsolved by these layers (it needs
 semantic fact-checking, which is out of scope here and called out as a known
@@ -277,7 +277,7 @@ in `results/ladder-*.png`.
 | 4 | 60% | **100%** | **100%** | 0% |
 
 **Headline finding:** naive poisoning already wins retrieval more often than
-the 15-page Track A corpus's story would suggest -- a plain, unembellished
+the 15-page Track A corpus's story would suggest, a plain, unembellished
 false claim already ranks #1 for 3 of 5 topics against 14,806 real
 competing chunks, and simple query-term mirroring (no optimization at all)
 takes all 5 topics to rank #1. Against a realistic-scale corpus, the
@@ -293,10 +293,10 @@ downstream naive ASR *drops* (60% -> 20%). The word substitutions that pull
 a document's embedding closer to the query also blur the literal wording
 that both the mechanical detector and, apparently, the LLM's own confidence
 in asserting the fabricated fact key on. Getting retrieved and getting
-believed are not the same axis -- this is the first result in this repo
+believed are not the same axis, this is the first result in this repo
 where they visibly pull apart.
 
-**Caveat on the flooding result -- read before citing "robust defeats
+**Caveat on the flooding result, read before citing "robust defeats
 flooding":** `robust` staying at 0% ASR through N=4 independent sources
 looks like `MIN_SUPPORT=2` (`robust_a002.py`) doing its documented job. It
 isn't. Verified directly against 4 independent flood chunks:
@@ -308,7 +308,7 @@ len(kept)                                  # == 1, always, for any N >= 1
 
 `hardened._screen()`'s `MAX_UNTRUSTED_CHUNKS=1` cap runs upstream of
 aggregation inside `robust_a002.answer()` too, so `isolate_and_aggregate`
-never sees more than one independent source through real retrieval --
+never sees more than one independent source through real retrieval,
 `MIN_SUPPORT=2` can never actually be reached end-to-end. The "attacker
 needs 2 independent sources to defeat robust" boundary that
 `robust_a002.py`'s own self-test demonstrates is real for
