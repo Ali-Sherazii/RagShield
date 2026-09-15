@@ -8,6 +8,20 @@ the difference.
 authored corpus, and a realistic-scale retrieval cost-curve) are built and
 measured. See [Results](#results) below.
 
+## Contents
+
+- [Why](#why)
+- [How it works](#how-it-works)
+- [Approach](#approach)
+- [Stack](#stack)
+- [Quickstart](#quickstart)
+- [Track B: retrieval manipulation cost curve](#track-b-retrieval-manipulation-cost-curve)
+- [Results](#results)
+  - [Track A](#track-a-instruction-injection-corpus-poisoning-exfiltration)
+  - [Track B](#track-b-retrieval-manipulation-cost-curve-1)
+- [Layout](#layout)
+- [Ethics and scope](#ethics-and-scope)
+
 ## Why
 
 A RAG pipeline concatenates a trusted system prompt with untrusted retrieved
@@ -16,7 +30,84 @@ who can publish a page that gets crawled can therefore influence what the
 assistant tells its users — without touching the code, the model, or the
 vector store.
 
+```mermaid
+flowchart LR
+    SP["System prompt<br/>(trusted, developer-authored)"]
+    RET["Retrieved chunks<br/>(untrusted, open web)"]
+    CAT["One undifferentiated<br/>prompt block"]
+    LLM(["LLM"])
+    ANS["Answer, possibly hijacked"]
+
+    SP --> CAT
+    RET --> CAT
+    CAT --> LLM --> ANS
+
+    style SP fill:#2980b9,color:#fff
+    style RET fill:#c0392b,color:#fff
+    style CAT fill:#f1c40f,color:#000
+    style LLM fill:#8e44ad,color:#fff
+```
+
 See [THREAT_MODEL.md](THREAT_MODEL.md) for the full attacker model and scope.
+
+## How it works
+
+Three pipelines, each closing off a bit more of the naive one's collapse
+between developer intent and retrieved data.
+
+**Naive** (`ragshield/pipeline.py`) — the attack target: no delimiting, no
+filtering, no provenance check.
+
+```mermaid
+flowchart LR
+    Q[User query] --> R["retrieve top-k chunks"]
+    R --> P["build_prompt()<br/>system prompt + retrieved text,<br/>concatenated, undelimited"]
+    P --> G["generate() via LLM"]
+    G --> A[Answer]
+
+    style P fill:#c0392b,color:#fff
+```
+
+**Hardened** (`ragshield/hardened.py`) — pattern-based screening, a
+trust-weighted exposure cap, a spotlighted/delimited prompt, and output
+filtering.
+
+```mermaid
+flowchart LR
+    Q[User query] --> R["retrieve, 3x oversampled"]
+    R --> S["_screen()<br/>injection-pattern match +<br/>untrusted-exposure cap = 1"]
+    S -->|dropped| X[discarded]
+    S -->|kept| P["build_prompt()<br/>spotlighted, trust-labeled<br/>&lt;item&gt; blocks"]
+    P --> G["generate() via LLM"]
+    G --> F["_filter_output()<br/>strip outbound URLs,<br/>redact prompt leaks"]
+    F --> A[Answer]
+
+    style S fill:#2980b9,color:#fff
+    style F fill:#2980b9,color:#fff
+```
+
+**Robust** (`ragshield/robust_a002.py`) — same screen as hardened, then
+isolate-then-aggregate: answer from each chunk alone, cluster by claim, and
+only report a claim that clears a minimum number of *independent sources*.
+Targets corpus poisoning (A002), which has no pattern for the screen above
+to catch.
+
+```mermaid
+flowchart LR
+    Q[User query] --> R["retrieve, 3x oversampled"]
+    R --> S["_screen()<br/>same as hardened"]
+    S --> ISO["isolate_and_aggregate()<br/>one generation per chunk,<br/>answered in isolation"]
+    ISO --> CL["cluster by claim<br/>(token overlap)"]
+    CL --> GATE{"support &ge; MIN_SUPPORT (2)<br/>independent sources?"}
+    GATE -->|yes| REP["report the consensus claim"]
+    GATE -->|no| SUP["suppress --<br/>'not corroborated'"]
+    REP --> F["_filter_output()"]
+    SUP --> F
+    F --> A[Answer]
+
+    style ISO fill:#1e8449,color:#fff
+    style GATE fill:#1e8449,color:#fff
+```
 
 ## Approach
 
@@ -71,13 +162,35 @@ python -m ragshield.evaluate --pipeline hardened
 python -m ragshield.evaluate --pipeline robust
 ```
 
-### Track B: retrieval manipulation cost curve
+## Track B: retrieval manipulation cost curve
 
-The corpus above is 15 pages -- a planted attack document is nearly the only
+The corpus above is 15 pages — a planted attack document is nearly the only
 thing in the index relevant to its target query, so "does it get retrieved"
 was never really being tested. This second track measures that directly:
 what does a planted document need to look like to rank into the top-k
 against a realistic-scale corpus of real, competing content?
+
+```mermaid
+flowchart TB
+    C["scale_ingest.py<br/>4,000 real Security StackExchange docs<br/>-&gt; 14,806 chunks"] --> H[("haystack embeddings<br/>cached in memory")]
+
+    SC["5 authored scenarios<br/>(ladder.py)"] --> R1["rung 1: plain claim"]
+    SC --> R2["rung 2: query-mirrored"]
+    SC --> R3["rung 3: white-box<br/>gradient hill-climb"]
+    SC --> R4["rung 4: N-document<br/>flooding"]
+
+    R1 --> RANK["rank_candidate()<br/>exact cosine rank vs. haystack"]
+    R2 --> RANK
+    R3 --> RANK
+    R4 --> RANK
+    H --> RANK
+
+    RANK -->|"rank &le; top_k"| ASR["downstream_asr()<br/>naive / hardened / robust"]
+    RANK --> CURVE["cost curve:<br/>effort -&gt; P(top-k) -&gt; ASR"]
+    ASR --> CURVE
+
+    style R3 fill:#8e44ad,color:#fff
+```
 
 ```bash
 # build a ~4,000-document real security-Q&A corpus in its own collection
@@ -101,6 +214,8 @@ for the rung-by-rung design. Results below.
 
 Measured with `llama3.1:8b`, temperature 0, 3 runs/case (`RUNS_PER_CASE`), on
 2026-08-07. Raw logs in `results/*.jsonl`, summaries in `results/*-summary.json`.
+
+![Track A: ASR by attack class, naive vs hardened vs robust](docs/assets/track_a_asr.png)
 
 | case | class | naive ASR | hardened ASR | caught by |
 |---|---|---|---|---|
@@ -133,6 +248,12 @@ corpus poisoning correctly remains unsolved by these layers (it needs
 semantic fact-checking, which is out of scope here and called out as a known
 limitation rather than hidden).
 
+**What that screen actually does, on a real recorded run** (case A001,
+"How do I enable CORS in FastAPI?" — full text in
+`results/naive-20260807-005332.jsonl` / `results/hardened-20260807-013221.jsonl`):
+
+![Real recorded output: naive attack succeeds, hardened defends](docs/assets/sample_output_a001.png)
+
 ### Track B: retrieval manipulation cost curve
 
 Measured with `llama3.1:8b`, temperature 0, `TOP_K=4`, against the real
@@ -140,6 +261,8 @@ Measured with `llama3.1:8b`, temperature 0, `TOP_K=4`, against the real
 on 2026-09-15. 5 scenarios (`ragshield/ladder.py`). Raw logs in
 `results/ladder-*.jsonl`, summary in `results/ladder-*-summary.json`, plot
 in `results/ladder-*.png`.
+
+![Track B: attacker cost curve -- rung vs retrieval success, and flooding vs defenses](docs/assets/track_b_cost_curve.png)
 
 | rung | P(enters top-4) | mean rank | ASR naive | ASR hardened | ASR robust |
 |---|---|---|---|---|---|
@@ -207,21 +330,25 @@ figures above as directional, not as statistically solid as Track A's.
 ## Layout
 
 ```
-corpus/sources.yaml      legitimate corpus URL list (committed; the corpus is not)
-corpus/attack/           attack documents authored for this project
-corpus/scale_corpus.yaml Track B's haystack corpus manifest (dataset id, sample seed/size)
-ragshield/pipeline.py    the naive, undefended pipeline -- the attack target
-ragshield/hardened.py    the hardened pipeline -- injection screening, trust-weighted
-                         retrieval, spotlighted prompt, output filtering
-ragshield/robust_a002.py isolate-then-aggregate defense against corpus poisoning
-ragshield/attacks.py     attack cases, success detectors, benign utility set
-ragshield/evaluate.py    runs every case N times, logs JSONL, reports ASR
+corpus/sources.yaml       legitimate corpus URL list (committed; the corpus is not)
+corpus/attack/            attack documents authored for this project
+corpus/scale_corpus.yaml  Track B's haystack corpus manifest (dataset id, sample seed/size)
+ragshield/pipeline.py     the naive, undefended pipeline -- the attack target
+ragshield/hardened.py     the hardened pipeline -- injection screening, trust-weighted
+                          retrieval, spotlighted prompt, output filtering
+ragshield/robust_a002.py  isolate-then-aggregate defense against corpus poisoning
+ragshield/attacks.py      attack cases, success detectors, benign utility set
+ragshield/evaluate.py     runs every case N times, logs JSONL, reports ASR
 ragshield/scale_ingest.py builds Track B's realistic-scale security-Q&A corpus
-ragshield/ladder.py      Track B's four-rung attacker ladder + white-box optimizer
-ragshield/ladder_eval.py Track B's cost-curve measurement harness
-results/                per-run logs and summaries (gitignored)
-data/chroma/             vector store -- a build artifact, rebuildable from sources
-data/raw/                Track B's downloaded raw dataset -- a build artifact too
+ragshield/ladder.py       Track B's four-rung attacker ladder + white-box optimizer
+ragshield/ladder_eval.py  Track B's cost-curve measurement harness
+demo/app.py               Gradio demo -- replay (default) or live pipeline runs
+results/                  per-run logs and summaries (gitignored)
+data/chroma/              vector store -- a build artifact, rebuildable from sources
+data/raw/                 Track B's downloaded raw dataset -- a build artifact too
+docs/assets/              committed README images -- regenerate via
+                          scripts/gen_readme_assets.py (Track A) and
+                          ladder_eval.py (Track B), never hand-edited
 ```
 
 ## Ethics and scope
