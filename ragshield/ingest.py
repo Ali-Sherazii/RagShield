@@ -22,18 +22,27 @@ def _client():
     return chromadb.PersistentClient(path=config.CHROMA_DIR)
 
 
-def get_collection(reset: bool = False):
+def get_collection(reset: bool = False, name: str | None = None):
     client = _client()
-    embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-        model_name=config.EMBED_MODEL
-    )
+    # Local cache first -- avoids a multi-minute retry storm (five retries
+    # with backoff, per file) when HF Hub's freshness check hits flaky DNS,
+    # for a model that's already downloaded and never changes underneath us.
+    try:
+        embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=config.EMBED_MODEL, local_files_only=True
+        )
+    except Exception:
+        embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=config.EMBED_MODEL
+        )
+    name = name or config.COLLECTION
     if reset:
         try:
-            client.delete_collection(config.COLLECTION)
+            client.delete_collection(name)
         except Exception:
             pass
     return client.get_or_create_collection(
-        name=config.COLLECTION,
+        name=name,
         embedding_function=embed_fn,
         metadata={"hnsw:space": "cosine"},
     )
@@ -65,10 +74,12 @@ def _add(collection, texts: list[str], source: str, trust: str) -> int:
     return len(texts)
 
 
-def ingest_urls(urls: list[str], trust: str = "untrusted", reset: bool = False) -> int:
+def ingest_urls(
+    urls: list[str], trust: str = "untrusted", reset: bool = False, collection_name: str | None = None
+) -> int:
     """Crawl pages and index them. Web content is untrusted by default --
     that assumption is the whole point of the threat model."""
-    collection = get_collection(reset=reset)
+    collection = get_collection(reset=reset, name=collection_name)
     splitter = _splitter()
     total = 0
     for url in urls:
@@ -80,9 +91,11 @@ def ingest_urls(urls: list[str], trust: str = "untrusted", reset: bool = False) 
     return total
 
 
-def ingest_paths(paths: list[str], trust: str = "untrusted", reset: bool = False) -> int:
+def ingest_paths(
+    paths: list[str], trust: str = "untrusted", reset: bool = False, collection_name: str | None = None
+) -> int:
     """Index local .txt/.md files -- used for authored attack documents."""
-    collection = get_collection(reset=reset)
+    collection = get_collection(reset=reset, name=collection_name)
     splitter = _splitter()
     total = 0
     for p in paths:
@@ -92,6 +105,23 @@ def ingest_paths(paths: list[str], trust: str = "untrusted", reset: bool = False
             chunks = splitter.split_text(f.read_text(encoding="utf-8"))
             total += _add(collection, chunks, source=str(f), trust=trust)
             print(f"  indexed {f}")
+    return total
+
+
+def ingest_documents(
+    docs: list[tuple[str, str]],
+    trust: str = "trusted",
+    reset: bool = False,
+    collection_name: str | None = None,
+) -> int:
+    """Index (text, source) pairs directly -- used by scale_ingest.py, where
+    documents come from a downloaded dataset rather than files or URLs."""
+    collection = get_collection(reset=reset, name=collection_name)
+    splitter = _splitter()
+    total = 0
+    for text, source in docs:
+        chunks = splitter.split_text(text)
+        total += _add(collection, chunks, source=source, trust=trust)
     return total
 
 

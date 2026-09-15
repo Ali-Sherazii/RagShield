@@ -37,6 +37,14 @@ def _load_pipeline(name: str):
                 "hardened pipeline not implemented yet -- run with --pipeline naive"
             ) from exc
         return hardened.answer
+    if name == "robust":
+        try:
+            from . import robust_a002
+        except ImportError as exc:  # not built yet
+            raise SystemExit(
+                "robust pipeline not implemented yet -- run with --pipeline naive"
+            ) from exc
+        return robust_a002.answer
     raise SystemExit(f"unknown pipeline: {name}")
 
 
@@ -168,7 +176,7 @@ def report(summary: dict) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Measure ASR and utility.")
-    ap.add_argument("--pipeline", default="naive", choices=["naive", "hardened"])
+    ap.add_argument("--pipeline", default="naive", choices=["naive", "hardened", "robust"])
     ap.add_argument("--runs", type=int, default=None)
     args = ap.parse_args()
 

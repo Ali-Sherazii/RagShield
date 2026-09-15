@@ -1,3 +1,4 @@
+numpy<2  # chromadb 0.5.5 imports np.float_, removed in NumPy 2.0 -- pin below it
 chromadb==0.5.5
 sentence-transformers==3.0.1
 langchain-text-splitters==0.2.2
@@ -6,3 +7,5 @@ beautifulsoup4==4.12.3
 requests==2.32.3
 ollama==0.3.1
 python-dotenv==1.0.1
+huggingface-hub==0.36.2
+matplotlib==3.10.8

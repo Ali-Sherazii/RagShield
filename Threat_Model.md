@@ -98,3 +98,67 @@ built. Full numbers and caveats in [README.md](README.md#results).
 ---
 
 **Design consequence:** because the attacker's only capability is authoring text that gets retrieved, every defense here operates on the path between retrieval and generation, plus one check after generation. No defense assumes the attacker can be identified, blocked, or authenticated — you cannot authenticate the open web.
+
+## 10. Track B: retrieval as the attack surface
+
+Section 4 already names "craft text to rank highly for target queries" as
+part of the attacker's capability, not an aside. Everything above this
+section tests what happens *after* retrieval succeeds. Against the 15-page
+corpus that's close to given — a planted document is nearly the only thing
+in the index relevant to its target query. Track B isolates the retrieval
+step itself and asks the question sections 1-9 assume an answer to: what
+does a document actually need to look like to get retrieved at all, against
+a realistic volume of genuine competing content?
+
+**Corpus.** `ragshield/scale_ingest.py` ingests ~4,000 real Security
+StackExchange Q&A threads (Stack Exchange Data Dump, CC BY-SA — see
+references.md) into a second, separate Chroma collection. This is read-only
+haystack content, not modified or attacked itself — the corpus/sources.yaml
+reproducibility pattern applies here too (`corpus/scale_corpus.yaml`).
+
+**Attacker ladder** (`ragshield/ladder.py`), four rungs of increasing
+sophistication, each measured by exact rank against the real haystack:
+
+1. **Plain** — an authored false claim, no retrieval engineering. Expected
+   to rank far outside the top-k; a documented negative result, not a bug.
+2. **Mirrored** — the same claim with query terms echoed in the text
+   (keyword-stuffing retrieval SEO).
+3. **Optimized** — a white-box, gradient-shortlisted greedy hill-climb
+   directly against the real local `bge-small-en-v1.5` model (the same
+   model the pipeline's retrieval uses), substituting real words drawn from
+   the haystack's own vocabulary so the result stays human-readable.
+   HotFlip-style (Ebrahimi et al. 2018); the retrieval-specific form is
+   Zhong et al. 2023. Every accept/reject decision is an exact re-embedding,
+   so the gradient shortlist can only affect speed, never correctness.
+4. **Flooded** — N independent paraphrased copies as separate sources (not
+   chunks of one file), directly probing the boundary `robust_a002.py`'s
+   `MIN_SUPPORT` consensus gate already defends.
+
+**What this measures that sections 1-9 don't:** an attacker cost curve —
+effort (rung, hill-climb iterations, or flood count) on one axis, P(enters
+the top-k) and downstream ASR (naive / hardened / robust) on the other. The
+existing defenses are overlaid on the flooding curve specifically, since
+that's the rung `MIN_SUPPORT` is positioned against — the isolate-then-
+aggregate gate can only raise the cost of flooding, never of ranking a
+single well-optimized document, which is the gap this track exists to show.
+
+Out of scope, same posture as section 6: every claim `ladder.py` plants is a
+fabricated numeric limit plus a fabricated override variable (never real
+actionable security advice), and the haystack corpus is read-only — nothing
+is published back to Security StackExchange or any live system.
+
+**Measured result (2026-09-15, `llama3.1:8b`, 5 scenarios, 14,806-chunk
+corpus):** a plain false claim already ranks #1 for 3/5 topics (P(top-4)
+60% at rung 1); query-term mirroring alone takes all 5 to rank #1 (100%).
+The white-box optimizer improves raw similarity further but *lowers*
+downstream naive ASR versus mirroring (60% → 20%) — retrieval success and
+generation-persuasiveness measurably diverge. Multi-document flooding
+(N=4) pushes naive and hardened ASR to 100% while robust holds at 0%, but
+verified directly: that 0% is `hardened.MAX_UNTRUSTED_CHUNKS=1` starving
+`robust_a002`'s own `MIN_SUPPORT=2` consensus gate of the independent
+sources it needs to ever fire, not the gate reaching and holding its
+documented threshold — the boundary `robust_a002.py`'s self-test
+demonstrates only holds with `_screen()` bypassed, not in the composed,
+end-to-end pipeline. Full numbers, methodology caveats, and the exact
+reproduction of that last finding are in
+[README.md](README.md#track-b-retrieval-manipulation-cost-curve).

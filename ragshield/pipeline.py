@@ -113,6 +113,7 @@ def main() -> None:
         sys.stdout.reconfigure(errors="replace")
 
     ap = argparse.ArgumentParser(description="Query the naive RAG pipeline.")
+    ap.add_argument("--pipeline", default="naive", choices=["naive", "hardened", "robust"])
     ap.add_argument("query", help="question to ask")
     ap.add_argument("--top-k", type=int, default=None)
     ap.add_argument("--show-context", action="store_true")

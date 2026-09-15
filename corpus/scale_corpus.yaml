@@ -1,0 +1,29 @@
+# Realistic-scale "haystack" corpus for the retrieval-manipulation cost-curve
+# experiment (ragshield/ladder_eval.py). Real, licensed, community content --
+# not authored attack material, and not committed as content, only as this
+# manifest (see ragshield/scale_ingest.py), same reproducibility pattern as
+# corpus/sources.yaml for the legitimate FastAPI corpus.
+#
+# Why this source: RAGShield's 15-page FastAPI corpus makes retrieval trivial
+# -- a planted document is nearly the only relevant thing in the index, so
+# "does it get retrieved" was never really being tested. This corpus gives a
+# planted document real competitors: thousands of genuine security Q&A
+# threads on the same general subject matter as RAGShield's threat model.
+#
+# Rebuild with:
+#   python -m ragshield.scale_ingest --reset
+trust: trusted
+dataset: flax-sentence-embeddings/stackexchange_titlebody_best_voted_answer_jsonl
+dataset_type: hf_hub_dataset
+file: security.stackexchange.com.jsonl.gz
+license: CC BY-SA (Stack Exchange Data Dump, mirrored on Hugging Face)
+row_format: "[title_and_body, best_voted_answer]"
+# sample_size / sample_seed mirror config.SCALE_CORPUS_SIZE / SCALE_CORPUS_SEED
+# -- kept here too so the exact sample is documented even if someone
+# overrides the env vars later. Target queries for the attacker ladder
+# (ragshield/ladder.py) are authored fresh, not drawn from this pool -- a
+# 4,000-document random sample of a real security Q&A site already gives
+# each query genuine topical competitors without needing an exact-match
+# holdout.
+sample_size: 4000
+sample_seed: 13
